@@ -30,6 +30,26 @@ const Auth = ({ user, setUser }) => {
     setUser(null);
   };
 
+  const TEST_ACCOUNTS = [
+    { name: 'Admin (Caio)', email: 'caioviier@gmail.com', role: 'ADMIN' },
+    { name: 'Fixed Agent', email: 'fixedagent@example.com', role: 'AGENT' },
+    { name: 'Test Agent', email: 'testagent@example.com', role: 'AGENT' }
+  ];
+
+  const handleQuickLogin = async (email) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { data } = await client.post('/auth/login', { email, password: 'Senha123@' });
+      localStorage.setItem('mhealth_token', data.accessToken);
+      setUser(data.user);
+    } catch (err) {
+      setError('Test login failed. Seed data might be missing.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (user) {
     return (
       <div className="card glass">
@@ -91,6 +111,38 @@ const Auth = ({ user, setUser }) => {
           {isLogin ? 'Login' : 'Sign Up'}
         </button>
       </form>
+
+      {isLogin && (
+        <div style={{ marginTop: '24px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+          <p style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#6366f1', fontWeight: 'bold', marginBottom: '12px', textAlign: 'center' }}>
+            Quick Access (Test Accounts)
+          </p>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            {TEST_ACCOUNTS.map(acc => (
+              <button 
+                key={acc.email}
+                className="btn"
+                onClick={() => handleQuickLogin(acc.email)}
+                disabled={loading}
+                style={{ 
+                  fontSize: '0.8rem', 
+                  padding: '8px', 
+                  background: 'rgba(99, 102, 241, 0.05)',
+                  border: '1px solid rgba(99, 102, 241, 0.2)',
+                  textAlign: 'left',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '2px'
+                }}
+              >
+                <div style={{ fontWeight: 'bold', color: '#a5b4fc' }}>{acc.name}</div>
+                <div style={{ fontSize: '0.7rem', opacity: 0.6 }}>{acc.role}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <p style={{ marginTop: '16px', textAlign: 'center', fontSize: '0.9rem', color: '#94a3b8' }}>
         {isLogin ? "Don't have an account?" : "Already have an account?"}
         <span 
