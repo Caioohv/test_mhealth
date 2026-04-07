@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { devApi } from './api';
+import ValidationLabs from './components/ValidationLabs';
 import { 
   UserPlus, 
   LogIn, 
@@ -35,6 +36,13 @@ function App() {
   const [networkAccess, setNetworkAccess] = useState('VIEW');
   const [recordsAccess, setRecordsAccess] = useState('VIEW');
 
+  // Medication states
+  const [meds, setMeds] = useState({}); // { networkId: [medications] }
+  const [alerts, setAlerts] = useState({}); // { networkId: [alerts] }
+  const [medName, setMedName] = useState('');
+  const [medDosage, setMedDosage] = useState('');
+  const [medInterval, setMedInterval] = useState(8);
+
   useEffect(() => {
     fetchAllUsers();
   }, []);
@@ -61,9 +69,29 @@ function App() {
         devApi.getNetworks(currentUser.id),
         devApi.getInvites(currentUser.email)
       ]);
-      setNetworks(netRes.data);
+      
+      const networksData = netRes.data;
+      setNetworks(networksData);
       setInvites(invRes.data);
-      if (netRes.data.length > 0) setInviteNetworkId(netRes.data[0].id);
+      if (networksData.length > 0) setInviteNetworkId(networksData[0].id);
+
+      // Fetch meds and alerts for each network
+      const mData = {};
+      const aData = {};
+      await Promise.all(networksData.map(async (n) => {
+        try {
+          const [mRes, aRes] = await Promise.all([
+            realApi.getMedications(n.id),
+            realApi.getAlerts(n.id)
+          ]);
+          mData[n.id] = mRes.data;
+          aData[n.id] = aRes.data;
+        } catch (e) {
+          console.warn(`Failed to fetch content for network ${n.id}`);
+        }
+      }));
+      setMeds(mData);
+      setAlerts(aData);
     } catch (err) {
       console.error('Failed to fetch user content', err);
     } finally {
@@ -146,6 +174,43 @@ function App() {
     }
   };
 
+  const handleCreateMedication = async (networkId) => {
+    if (!medName || !medDosage) return alert('Preencha nome e dosagem');
+    try {
+      const { data: m } = await realApi.createMedication(networkId, {
+        name: medName,
+        dosage: medDosage
+      });
+      // Add a default schedule
+      await realApi.addSchedule(m.id, { intervalHours: Number(medInterval) });
+      setMedName('');
+      setMedDosage('');
+      fetchUserContent();
+    } catch (err) {
+      setError('Erro ao criar medicamento');
+    }
+  };
+
+  const handleToggleBuy = async (medId) => {
+    try {
+      const medication = Object.values(meds).flat().find(m => m.id === medId);
+      await realApi.toggleBuy(medId, !medication.needsBuy);
+      fetchUserContent();
+    } catch (err) {
+      setError('Erro ao alterar status de compra');
+    }
+  };
+
+  const handleRecordIntake = async (medId, status = 'TAKEN') => {
+    try {
+      await realApi.createIntake(medId, { status });
+      alert('Dose registrada!');
+      fetchUserContent();
+    } catch (err) {
+      setError('Erro ao registrar dose');
+    }
+  };
+
   if (!currentUser) {
     return (
       <div className="app-container">
@@ -181,6 +246,8 @@ function App() {
           </div>
         </div>
         {error && <div className="glass-card" style={{ borderColor: 'var(--danger)', color: 'var(--danger)' }}>{error}</div>}
+        
+        <ValidationLabs />
       </div>
     );
   }
@@ -216,9 +283,26 @@ function App() {
                     </div>
                     <div className="badge">{n.myRole}</div>
                   </div>
+
+                  {/* ALERTS SECTION */}
+                  {alerts[n.id]?.length > 0 && (
+                    <div className="alerts-container" style={{ marginTop: '1rem' }}>
+                      {alerts[n.id].map((a, idx) => (
+                        <div key={idx} className="alert-item" style={{ background: 'rgba(239, 68, 68, 0.1)', border: '1px solid var(--danger)', padding: '0.5rem', borderRadius: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                          <AlertCircle size={16} color="var(--danger)" />
+                          <span style={{ fontSize: '0.8rem' }}>
+                            {a.alertType === 'LATE_DOSE' ? `Atraso: ${a.name} (${a.lateTime || 'Horário previsto passado'})` : `Comprar: ${a.name}`}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   <div className="member-list">
+                    {/* ... members logic ... */}
                     {n.members?.map(m => (
                       <div key={m.id} className="user-chip" style={{ cursor: 'default', padding: '0.5rem 1rem' }}>
+                        {/* ... member display ... */}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                               <UserCheck size={14} /> 
@@ -234,6 +318,42 @@ function App() {
                           </div>
                       </div>
                     ))}
+                  </div>
+
+                  {/* MEDICATIONS LIST */}
+                  <div className="medications-dashboard" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--glass-border)', paddingTop: '1rem' }}>
+                    <h4 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                      <Pill size={18} /> Medicamentos
+                    </h4>
+                    
+                    {meds[n.id]?.length > 0 ? (
+                      <div className="med-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1rem' }}>
+                        {meds[n.id].map(m => (
+                          <div key={m.id} className="glass-card" style={{ padding: '1rem', marginBottom: 0 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              <strong>{m.name}</strong>
+                              {m.needsBuy && <ShoppingCart size={14} color="var(--danger)" />}
+                            </div>
+                            <p className="text-muted" style={{ fontSize: '0.8rem' }}>{m.dosage}</p>
+                            
+                            <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                              <button onClick={() => handleRecordIntake(m.id)} className="btn btn-primary" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}>Ok</button>
+                              <button onClick={() => handleToggleBuy(m.id)} className="btn btn-outline" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }}>
+                                {m.needsBuy ? 'Comprado' : 'Faltando'}
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p className="text-muted" style={{ fontSize: '0.8rem' }}>Nenhum medicamento cadastrado.</p>}
+
+                    {/* ADD MED FORM */}
+                    <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
+                      <input value={medName} onChange={e => setMedName(e.target.value)} placeholder="Nome" style={{ flex: 2, fontSize: '0.8rem' }} />
+                      <input value={medDosage} onChange={e => setMedDosage(e.target.value)} placeholder="Dosagem" style={{ flex: 1, fontSize: '0.8rem' }} />
+                      <input type="number" value={medInterval} onChange={e => setMedInterval(e.target.value)} placeholder="H" style={{ width: '50px', fontSize: '0.8rem' }} />
+                      <button onClick={() => handleCreateMedication(n.id)} className="btn btn-primary" style={{ padding: '0.5rem' }}>+</button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -336,6 +456,8 @@ function App() {
           <div className="empty-state">Nenhum convite pendente.</div>
         )}
       </section>
+
+      <ValidationLabs />
     </div>
   );
 }

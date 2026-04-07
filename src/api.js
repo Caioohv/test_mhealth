@@ -30,4 +30,20 @@ export const devApi = {
   acceptInvite: (token, userId) => api.post('/api/dev/accept-invite', { token, userId }),
 };
 
+export const realApi = {
+  register: (data) => api.post('/auth/register', data),
+  login: (data) => api.post('/auth/login', data),
+  createNetwork: (data) => api.post('/api/networks', data),
+  invite: (networkId, data) => api.post(`/api/networks/${networkId}/invitations`, data),
+  
+  // Medications
+  getMedications: (networkId) => api.get(`/api/networks/${networkId}/medications`),
+  createMedication: (networkId, data) => api.post(`/api/networks/${networkId}/medications`, data),
+  deleteMedication: (id) => api.delete(`/api/medications/${id}`),
+  toggleBuy: (id, needsBuy) => api.patch(`/api/medications/${id}/toggle-buy`, { needsBuy }),
+  getAlerts: (networkId) => api.get(`/api/networks/${networkId}/medications/alerts`),
+  createIntake: (medicationId, data) => api.post(`/api/medications/${medicationId}/intakes`, data),
+  addSchedule: (medicationId, data) => api.post(`/api/medications/${medicationId}/schedules`, data),
+};
+
 export default api;
